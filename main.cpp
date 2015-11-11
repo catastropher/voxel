@@ -2,7 +2,7 @@
 #include <cstdio>
 #include <cstdlib>
 
-#include "grip.hpp"
+#include "grid.hpp"
 
 int main(int argc, char **argv) {
     std::cout << "Hello, world!" << std::endl;

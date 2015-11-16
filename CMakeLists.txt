@@ -3,4 +3,7 @@ project(voxel)
 
 add_executable(voxel main.cpp)
 
-install(TARGETS voxel RUNTIME DESTINATION bin)
+SET(CMAKE_CXX_FLAGS "-Wall")
+
+find_package(SDL REQUIRED)
+include_directories(${SDL2_INCLUDE_DIR})

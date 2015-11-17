@@ -17,9 +17,14 @@
 
 #include "grid.hpp"
 
+struct ModelTriangle {
+  int v[3];
+};
+
 class Model {
 private:
   std::vector<glm::vec3> mesh_v;
+  std::vector<ModelTriangle> mesh_t;
   
   int addVertex(glm::vec3 v) {
     // Check existing points
@@ -32,9 +37,12 @@ private:
     mesh_v.push_back(v);
     return mesh_v.size() - 1;
   }
+  
 public:
   GLuint vertexBuffer;
   int total_v;
+  
+  //int addTriangle(
   
   Model() {
     total_v = 3;

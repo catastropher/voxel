@@ -16,7 +16,7 @@
 class Engine {
 private:
   SDL_Surface* screen;
-  
+  GLuint programID; 
   
   
   bool initSDL(int w, int h) {
@@ -35,7 +35,7 @@ private:
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     
-    screen = SDL_SetVideoMode(w, h, bpp, SDL_OPENGL | SDL_FULLSCREEN);
+    screen = SDL_SetVideoMode(w, h, bpp, SDL_OPENGL);
     
     if(!screen) {
       fprintf(stderr, "Failed to set video mode\n");
@@ -58,6 +58,14 @@ private:
     glLoadIdentity();
     gluPerspective(60, ratio, 1, 1024);
     
+    glClearColor(0.0f, 0.f, 0.0f, 0.0f); 
+    
+    programID = loadShaders("../vertex.glsl",  "../fragment.glsl");
+    
+    if (programID == 0) {
+      return false;
+    }
+    
     return true;
   }
   
@@ -72,6 +80,10 @@ public:
   
   void flipScreen() {
     SDL_GL_SwapBuffers();
+  }
+  
+  void render() {
+    glUseProgram(programID);
   }
   
   GLuint vertexbuffer;
@@ -102,7 +114,6 @@ GLuint Engine::loadShaders(const char * vertex_file_path, const char* fragment_f
         VertexShaderStream.close();
     } else {
         printf("Impossible to open %s. Are you in the right directory ? Don't forget to read the FAQ !\n", vertex_file_path);
-        getchar();
         return 0;
     }
 
@@ -121,7 +132,7 @@ GLuint Engine::loadShaders(const char * vertex_file_path, const char* fragment_f
 
 
     // Compile Vertex Shader
-    printf("Compiling shader : %s\n", vertex_file_path);
+    printf("Compiling shader: %s\n", vertex_file_path);
     char const * VertexSourcePointer = VertexShaderCode.c_str();
     glShaderSource(VertexShaderID, 1, &VertexSourcePointer , NULL);
     glCompileShader(VertexShaderID);
@@ -138,7 +149,7 @@ GLuint Engine::loadShaders(const char * vertex_file_path, const char* fragment_f
 
 
     // Compile Fragment Shader
-    printf("Compiling shader : %s\n", fragment_file_path);
+    printf("Compiling shader: %s\n", fragment_file_path);
     char const * FragmentSourcePointer = FragmentShaderCode.c_str();
     glShaderSource(FragmentShaderID, 1, &FragmentSourcePointer , NULL);
     glCompileShader(FragmentShaderID);
@@ -176,7 +187,7 @@ GLuint Engine::loadShaders(const char * vertex_file_path, const char* fragment_f
 
     glDeleteShader(VertexShaderID);
     glDeleteShader(FragmentShaderID);
-
+    
     return ProgramID;
 }
 
@@ -434,7 +445,13 @@ void Engine::test() {
 int main(int argc, char *argv[]) {
   Engine engine;
   
-  engine.init(640, 480);
+  if (!engine.init(640, 480)) {
+    fprintf(stderr,  "Failed to initialize engine\n");
+    SDL_Quit();
+    return 0;
+  }
+  
+  printf("Engine initialized successfully\n");
   
   engine.testInit();
   
@@ -445,7 +462,12 @@ int main(int argc, char *argv[]) {
     
     /* Draw the screen. */
     //draw_screen( );
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    engine.render();
     engine.test();
+    
+    SDL_Delay(10);
+    
     engine.flipScreen();
   }
 }

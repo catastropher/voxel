@@ -12,12 +12,26 @@
 #include <vector>
 #include <fstream>
 
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
+#include "glm/glm.hpp"
+#include "glm/gtc/matrix_transform.hpp"
 
 #include "grid.hpp"
 
 class Model {
+private:
+  std::vector<glm::vec3> mesh_v;
+  
+  int addVertex(glm::vec3 v) {
+    // Check existing points
+    for(int i = 0; i < (int)mesh_v.size(); ++i) {
+      if(v == mesh_v[i]) {
+	return i;
+      }
+    }
+    
+    mesh_v.push_back(v);
+    return mesh_v.size() - 1;
+  }
 public:
   GLuint vertexBuffer;
   int total_v;
@@ -100,6 +114,7 @@ private:
   GLuint mvpMatrixID;
   int mouse_dx, mouse_dy;
   std::map<int, bool> keyMap;
+  bool lockMouse;
   
   bool keyDown(int key) {
     return keyMap.count(key) && keyMap[key];
@@ -121,9 +136,7 @@ private:
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     
-    // Relative mouse mode
-    SDL_WM_GrabInput(SDL_GRAB_ON);
-    SDL_ShowCursor(SDL_DISABLE);
+    lockMouse = false;
     
     screen = SDL_SetVideoMode(w, h, bpp, SDL_OPENGL);// | SDL_FULLSCREEN);
     
@@ -204,7 +217,7 @@ public:
   }
   
   void calcMatrixFromInput() {
-    float mouse_speed = 0.005f * 4;
+    float mouse_speed = 0.005f * 16;
     float delta_time = 1.0 / 60;
     
     cam.angle.x += mouse_dx * mouse_speed * delta_time;
@@ -593,8 +606,10 @@ void Engine::handleKeys() {
     
     switch(event.type) {
       case SDL_MOUSEMOTION:
-        mouse_dx += event.motion.xrel;
-        mouse_dy += event.motion.yrel;
+	if(lockMouse) {
+	  mouse_dx += event.motion.xrel;
+	  mouse_dy += event.motion.yrel;
+	}
         break;
       
       case SDL_KEYDOWN:
@@ -604,6 +619,22 @@ void Engine::handleKeys() {
           case SDLK_ESCAPE:
             quit = true;
             break;
+	    
+	  case SDLK_TAB:
+	    lockMouse = !lockMouse;
+	    
+	    if(lockMouse) {
+	      // Relative mouse mode
+	      SDL_WM_GrabInput(SDL_GRAB_ON);
+	      SDL_ShowCursor(SDL_DISABLE);
+	    }
+	    else {
+	      // Relative mouse mode
+	      SDL_WM_GrabInput(SDL_GRAB_OFF);
+	      SDL_ShowCursor(SDL_ENABLE);
+	    }
+	    
+	    break;
             
           default:
             keyMap[event.key.keysym.sym] = true;

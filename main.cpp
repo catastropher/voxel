@@ -11,12 +11,88 @@
 #include <vector>
 #include <fstream>
 
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+
 #include "grid.hpp"
+
+class Model {
+public:
+  GLuint vertexBuffer;
+  int total_v;
+  
+  Model() {
+    total_v = 3;
+    
+    printf("Create model\n");
+    
+    // An array of 3 vectors which represents 3 vertices
+    static const GLfloat g_vertex_buffer_data[] = {
+      -1.0f, -1.0f, 0.0f,
+      1.0f, -1.0f, 0.0f,
+      0.0f,  1.0f, 0.0f,
+    };
+    
+    // This will identify our vertex buffer
+    // Generate 1 buffer, put the resulting identifier in vertexbuffer
+    glGenBuffers(1, &vertexBuffer);
+    // The following commands will talk about our 'vertexbuffer' buffer
+    glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
+    // Give our vertices to OpenGL.
+    glBufferData(GL_ARRAY_BUFFER, sizeof(g_vertex_buffer_data), g_vertex_buffer_data, GL_STATIC_DRAW);
+  }
+  
+  // Renders the model using the current transformation settings
+  void render() {
+    glEnableVertexAttribArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
+    glVertexAttribPointer(
+      0,                  // attribute 0. No particular reason for 0, but must match the layout in the shader.
+      total_v,                  // size
+      GL_FLOAT,           // type
+      GL_FALSE,           // normalized?
+      0,                  // stride
+      (void*)0            // array buffer offset
+    );
+    // Draw the triangle !
+    glDrawArrays(GL_TRIANGLES, 0, 3); // Starting from vertex 0; 3 vertices total -> 1 triangle
+    glDisableVertexAttribArray(0);
+  }
+};
+
+class Actor {
+public:
+  Model* model;
+  glm::vec3 pos;
+  glm::vec3 angle;
+  glm::mat4x4 mat;
+  
+  Actor() {
+    model = NULL;
+  }
+  
+  void render() {
+    if(model) {
+      model->render();
+    }
+  }
+};
+
+class Camera : public Actor {
+public:
+  glm::mat4x4 project;
+  glm::mat4x4 view;
+  glm::mat4x4 project_view;
+  
+  float near, far;
+};
 
 class Engine {
 private:
   SDL_Surface* screen;
-  GLuint programID; 
+  GLuint programID;
+  Camera cam;
+  GLuint mvpMatrixID;
   
   
   bool initSDL(int w, int h) {
@@ -34,6 +110,9 @@ private:
     SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 5);
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+    
+    // Relative mouse mode
+    SDL_WM_GrabInput(SDL_GRAB_ON);
     
     screen = SDL_SetVideoMode(w, h, bpp, SDL_OPENGL);
     
@@ -56,7 +135,11 @@ private:
     glViewport(0, 0, w, h);
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
-    gluPerspective(60, ratio, 1, 1024);
+    
+    cam.near = 1;
+    cam.far = 1024;
+    
+    gluPerspective(60, ratio, cam.near, cam.far);
     
     glClearColor(0.0f, 0.f, 0.0f, 0.0f); 
     
@@ -74,8 +157,32 @@ public:
     screen = NULL;
   }
   
-  bool init(int w, int h) {
-    return initSDL(w, h) && initOpenGL(w, h);
+  bool init(int w, int h, float fov = 60.0) {
+    if(!initSDL(w, h) || !initOpenGL(w, h)) {
+      return false;
+    }
+    
+    // Initialize camera
+    cam.project = glm::perspective(glm::radians(fov), (float)w / h, cam.near, cam.far);
+    
+
+    cam.view = glm::lookAt(
+      glm::vec3(4,3,3), // Camera is at (4,3,3), in World Space
+      glm::vec3(0,0,0), // and looks at the origin
+      glm::vec3(0,1,0)  // Head is up (set to 0,-1,0 to look upside-down)
+    );
+    
+    cam.project_view = cam.project * cam.view;
+    
+    mvpMatrixID = glGetUniformLocation(programID, "MVP");
+    
+    return true;
+  }
+  
+  void calcMatrixFromInput() {
+    int x, y;
+    SDL_GetMouseState(&x, &y);
+    
   }
   
   void flipScreen() {
@@ -86,11 +193,17 @@ public:
     glUseProgram(programID);
   }
   
-  GLuint vertexbuffer;
+  
   void testInit();
   void test();
   
   GLuint loadShaders(const char * vertex_file_path, const char* fragment_file_path);
+  
+  void renderActor(Actor& a) {
+    glm::mat4x4 mvp = cam.project_view * a.mat; 
+    glUniformMatrix4fv(mvpMatrixID, 1, GL_FALSE, &mvp[0][0]);
+    a.render();
+  }
   
   ~Engine() {
     SDL_Quit();
@@ -410,36 +523,10 @@ static void draw_screen( void )
 
 
 void Engine::testInit() {
-  // An array of 3 vectors which represents 3 vertices
-  static const GLfloat g_vertex_buffer_data[] = {
-    -1.0f, -1.0f, 0.0f,
-    1.0f, -1.0f, 0.0f,
-    0.0f,  1.0f, 0.0f,
-  };
-  
-  // This will identify our vertex buffer
-  // Generate 1 buffer, put the resulting identifier in vertexbuffer
-  glGenBuffers(1, &vertexbuffer);
-  // The following commands will talk about our 'vertexbuffer' buffer
-  glBindBuffer(GL_ARRAY_BUFFER, vertexbuffer);
-  // Give our vertices to OpenGL.
-  glBufferData(GL_ARRAY_BUFFER, sizeof(g_vertex_buffer_data), g_vertex_buffer_data, GL_STATIC_DRAW);
 }
 
 void Engine::test() {
-  glEnableVertexAttribArray(0);
-  glBindBuffer(GL_ARRAY_BUFFER, vertexbuffer);
-  glVertexAttribPointer(
-      0,                  // attribute 0. No particular reason for 0, but must match the layout in the shader.
-      3,                  // size
-      GL_FLOAT,           // type
-      GL_FALSE,           // normalized?
-      0,                  // stride
-      (void*)0            // array buffer offset
-    );
-  // Draw the triangle !
-  glDrawArrays(GL_TRIANGLES, 0, 3); // Starting from vertex 0; 3 vertices total -> 1 triangle
-  glDisableVertexAttribArray(0);
+  
 }
 
 int main(int argc, char *argv[]) {
@@ -455,6 +542,9 @@ int main(int argc, char *argv[]) {
   
   engine.testInit();
   
+  Actor actor;
+  actor.model = new Model;
+  
   while( 1 ) {
     /* Process incoming events. */
     if(!process_events())
@@ -464,7 +554,8 @@ int main(int argc, char *argv[]) {
     //draw_screen( );
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     engine.render();
-    engine.test();
+    
+    engine.renderActor(actor);
     
     SDL_Delay(10);
     

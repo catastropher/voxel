@@ -3,6 +3,7 @@
 #include <iostream>
 #include <cstdio>
 #include <cstdlib>
+#include <map>
 
 #include <SDL/SDL.h>
 #include <GL/gl.h>
@@ -66,9 +67,13 @@ public:
   glm::vec3 pos;
   glm::vec3 angle;
   glm::mat4x4 mat;
+  glm::vec3 direction;
+  glm::vec3 right;
   
   Actor() {
     model = NULL;
+    angle = glm::vec3(0, 0, 0);
+    mat = glm::mat4x4(1.0f);
   }
   
   void render() {
@@ -93,7 +98,12 @@ private:
   GLuint programID;
   Camera cam;
   GLuint mvpMatrixID;
+  int mouse_dx, mouse_dy;
+  std::map<int, bool> keyMap;
   
+  bool keyDown(int key) {
+    return keyMap.count(key) && keyMap[key];
+  }
   
   bool initSDL(int w, int h) {
     // Init SDL
@@ -113,8 +123,9 @@ private:
     
     // Relative mouse mode
     SDL_WM_GrabInput(SDL_GRAB_ON);
+    SDL_ShowCursor(SDL_DISABLE);
     
-    screen = SDL_SetVideoMode(w, h, bpp, SDL_OPENGL);
+    screen = SDL_SetVideoMode(w, h, bpp, SDL_OPENGL);// | SDL_FULLSCREEN);
     
     if(!screen) {
       fprintf(stderr, "Failed to set video mode\n");
@@ -153,6 +164,8 @@ private:
   }
   
 public:
+  bool quit;
+  
   Engine() {
     screen = NULL;
   }
@@ -167,7 +180,7 @@ public:
     
 
     cam.view = glm::lookAt(
-      glm::vec3(4,3,3), // Camera is at (4,3,3), in World Space
+      glm::vec3(0,0,3), // Camera is at (4,3,3), in World Space
       glm::vec3(0,0,0), // and looks at the origin
       glm::vec3(0,1,0)  // Head is up (set to 0,-1,0 to look upside-down)
     );
@@ -176,13 +189,52 @@ public:
     
     mvpMatrixID = glGetUniformLocation(programID, "MVP");
     
+    quit = false;
+    mouse_dx = 0;
+    mouse_dy = 0;
+    
+    cam.angle.x = 0;
+    cam.angle.y = 3.14;
+    cam.angle.z = 0;
+    
+    cam.pos = glm::vec3(0, 0, 3);
+    
+    
     return true;
   }
   
   void calcMatrixFromInput() {
-    int x, y;
-    SDL_GetMouseState(&x, &y);
+    float mouse_speed = 0.005f * 4;
+    float delta_time = 1.0 / 60;
     
+    cam.angle.x += mouse_dx * mouse_speed * delta_time;
+    cam.angle.y += mouse_dy * mouse_speed * delta_time;
+    
+    mouse_dx = 0;
+    mouse_dy = 0;
+    
+    cam.direction = glm::vec3(
+      cos(cam.angle.y) * sin(cam.angle.x),
+      sin(cam.angle.y),
+      cos(cam.angle.y) * cos(cam.angle.x)
+    );
+    
+    // Right vector
+    cam.right = glm::vec3(
+      sin(cam.angle.x - 3.14f/2.0f),
+      0,
+      cos(cam.angle.x - 3.14f/2.0f)
+    );
+    
+    glm::vec3 up = glm::cross(cam.right, cam.direction);
+        
+    cam.view = glm::lookAt(
+      cam.pos,
+      cam.pos + cam.direction,
+      up
+    );
+    
+    cam.project_view = cam.project * cam.view;
   }
   
   void flipScreen() {
@@ -204,6 +256,10 @@ public:
     glUniformMatrix4fv(mvpMatrixID, 1, GL_FALSE, &mvp[0][0]);
     a.render();
   }
+  
+  float deltaTime;
+  
+  void handleKeys();
   
   ~Engine() {
     SDL_Quit();
@@ -529,6 +585,60 @@ void Engine::test() {
   
 }
 
+void Engine::handleKeys() {
+  SDL_Event event;
+  
+  /* Grab all the events off the queue. */
+  while(SDL_PollEvent(&event)) {
+    
+    switch(event.type) {
+      case SDL_MOUSEMOTION:
+        mouse_dx += event.motion.xrel;
+        mouse_dy += event.motion.yrel;
+        break;
+      
+      case SDL_KEYDOWN:
+        /* Handle key presses. */
+        
+        switch(event.key.keysym.sym) {
+          case SDLK_ESCAPE:
+            quit = true;
+            break;
+            
+          default:
+            keyMap[event.key.keysym.sym] = true;
+            break;
+        }
+        
+        break;
+        
+        
+      case SDL_KEYUP:
+        keyMap[event.key.keysym.sym] = false;
+        break;
+      case SDL_QUIT:
+        /* Handle quit requests (like Ctrl-c). */
+        quit = true;
+        break;
+    }
+    
+  }
+  
+  if(keyDown(SDLK_w)) {
+    cam.pos += cam.direction * deltaTime * 3.0f;
+  }
+  else if(keyDown(SDLK_s)) {
+    cam.pos -= cam.direction * deltaTime * 3.0f;
+  }
+  
+  if(keyDown(SDLK_a)) {
+    cam.pos -= cam.right * deltaTime * 3.0f;
+  }
+  else if(keyDown(SDLK_d)) {
+    cam.pos += cam.right * deltaTime * 3.0f;
+  }
+}
+
 int main(int argc, char *argv[]) {
   Engine engine;
   
@@ -545,19 +655,23 @@ int main(int argc, char *argv[]) {
   Actor actor;
   actor.model = new Model;
   
-  while( 1 ) {
+  
+  while(!engine.quit) {
     /* Process incoming events. */
-    if(!process_events())
-      break;
+    
+    engine.deltaTime = 1.0 / 60.0;
     
     /* Draw the screen. */
     //draw_screen( );
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    engine.render();
     
+    engine.handleKeys();
+    engine.calcMatrixFromInput();
+    
+    engine.render();
     engine.renderActor(actor);
     
-    SDL_Delay(10);
+    //SDL_Delay(1);
     
     engine.flipScreen();
   }

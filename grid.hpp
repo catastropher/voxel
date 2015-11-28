@@ -1,106 +1,122 @@
 #include <cstring>
+#include <vector>
+#include "glm/glm.hpp"
+
+struct Triangle {
+  glm::vec3 v[3];
+};
+
+struct Quad {
+  glm::vec3 v[4];
+  
+  void triangulate(Triangle& a, Triangle& b) {
+    
+  }
+};
+
+enum {
+  FACE_TOP,
+  FACE_BOTTOM,
+  FACE_BACK,
+  FACE_LEFT,
+  FACE_RIGHT,
+  FACE_FRONT
+  
+};
+
+struct Cube {
+  glm::vec3 v[8];
+  float x_size, y_size, z_size;
+  
+  void setPos(glm::vec3 pos) {
+    v[0] = pos;
+    v[1] = pos + glm::vec3(0, 0, z_size);
+    v[2] = pos + glm::vec3(x_size, 0, z_size);
+    v[3] = pos + glm::vec3(x_size, 0, 0);
+    
+    for(int i = 0; i < 4; ++i) {
+      v[i + 4] = v[i] + glm::vec3(0, y_size, 0);
+    }
+  }
+  
+  Quad getFace(int face) {
+    Quad q;
+    
+    if(face <= FACE_BOTTOM) {
+      for(int i = 0; i < 4; ++i) {
+        q.v[i] = v[face * 4 + i];
+      }
+    }
+    else {
+      int f = face - 2;
+      q.v[0] = v[f];
+      q.v[1] = v[(f + 1) & 3];
+      q.v[2] = v[((f + 1) & 3) + 4];
+      q.v[3] = v[f + 4];
+    }
+    
+    return q;
+  }
+  
+};
 
 template<typename T>
 class Grid3D {
-private:
+public:
   T* data;
   int x_size, y_size, z_size;
   float grid_dx, grid_dy, grid_dz;
   
-  size_t dataUsage() {
-    return x_size * y_size * z_size * sizeof(T);
-  }
-  
-  size_t dataSize() {
-    return x_size * y_size * z_size;
-  }
-  
-  void setShellCells(T empty, Grid3D &g, int x, int y, int z, int dx, int dy, int dz) {
-    int depth = 0;
-    
-    while(this->in_grid(x, y, z)) {
-      if(at(x, y, z) == empty) {
-	depth = 0;
-      }
-      else {
-	++depth;
-	
-	if(depth == 1) {
-	  g.at(x, y, z) = at(x, y, z);
-	}
-      }
-      
-      x += dx;
-      y += dy;
-      z += dz;
-    }
-  }
-  
-  
-public:
-  Grid3D(int xx_size, int yy_size, int zz_size) : x_size(xx_size),
-    y_size(yy_size), z_size(zz_size) {
-      
-    data = new T[x_size * y_size * z_size];
-  }
-  
-  bool inGrid(int x, int y, int z) {
+  bool validPos(int x, int y, int z) {
     return x >= 0 && x < x_size && y >= 0 && y < y_size && z >= 0 && z < z_size;
   }
   
-  Grid3D(Grid3D& g) {
-    x_size = g.x_size;
-    y_size = g.y_size;
-    z_size = g.z_size;
+  T& get(int x, int y, int z) {
+    return data[x + y * x_size + z * y_size * x_size];
+  }
+  
+  bool shouldGeneratePoly(int x, int y, int z, int face, T& empty) {
+    int offset[6][3] = {
+      { 0, -1, 0 },
+      { 0, 1, 0 },
+      { -1, 0, 0 },
+      { 1, 0, 0 },
+    };
     
-    grid_dx = g.dx;
-    grid_dy = g.dy;
-    grid_dz = g.dz;
+    x += offset[0];
+    y += offset[1];
+    z += offset[2];
     
-    data = new T[x_size * y_size * z_size];
-    memcpy(data, g.data, dataUsage());
+    return validPos(x, y, z) && get(x, y, z) == empty;
   }
   
-  ~Grid3D() {
-    delete [] data;
-  }
-  
-  T& at(int x, int y, int z) {
-    return data[x + y * y_size + z * y_size * z_size];
-  }
-  
-  // Fills the entire grid with the given value
-  void fill(T val) {
-    for(size_t i = 0; i < dataSize(); ++i) {
-      data[i] = val;
-    }
-  }
-  
-  void createShell(T empty, Grid3D& dest) {
-    // Top/bottom
-    for(int x = 0; x < x_size; ++x) {
-      for(int z = 0; z < z_size; ++z) {
-	setShellCells(dest, x, 0, z, 0, 1, 0);
-	setShellCells(dest, x, y_size - 1, z, 0, -1, 0);
-      }
-    }
+  std::vector<Triangle> triangulate(T empty) {
+    T* ptr = data;
     
-    // Left/right
     for(int z = 0; z < z_size; ++z) {
       for(int y = 0; y < y_size; ++y) {
-	setShellCells(dest, 0, y, z, 1, 0, 0);
-	setShellCells(dest, x_size - 1, y, z, -1, 0, 0);
+        for(int x = 0; x < x_size; ++x) {
+          if(*ptr != empty) {
+            for(int i = 0; i < 6; ++i) {
+              Cube c;
+              c.x_size = grid_dx;
+              c.y_size = grid_dy;
+              c.z_size = grid_dz;
+              
+              c.setPos(glm::vec3(x * grid_dx, y * grid_dy, z * grid_dz));
+              
+              if(shouldGeneratePoly(x, y, z, i, empty)) {
+                Quad q;
+                Triangle a, b;
+                
+                c.getFace(i).triangulate(a, b);
+              }
+            }
+          }
+        }
       }
     }
-    
-    // Front/back
-    for(int x = 0; x < x_size; ++x) {
-      for(int y = 0; y < y_size; ++y) {
-	setShellCells(dest, x, y, 0, 0, 0, 1);
-	setShellCells(dest, x, y, z_size - 1, 0, 0, -1);
-      }
-    }
-    
   }
-};
   
+  
+};

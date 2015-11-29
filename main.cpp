@@ -23,38 +23,62 @@ struct ModelTriangle {
 
 class Model {
 private:
-  std::vector<glm::vec3> mesh_v;
-  std::vector<ModelTriangle> mesh_t;
-  
-  int addVertex(glm::vec3 v) {
-    // Check existing points
-    for(int i = 0; i < (int)mesh_v.size(); ++i) {
-      if(v == mesh_v[i]) {
-	return i;
-      }
-    }
-    
-    mesh_v.push_back(v);
-    return mesh_v.size() - 1;
-  }
+  std::vector<Triangle> tri;
   
 public:
   GLuint vertexBuffer;
-  int total_v;
+  GLuint colorBuffer;
   
   //int addTriangle(
   
-  Model() {
-    total_v = 3;
+  Model(std::vector<Triangle> t) {
+    tri = t;
     
-    printf("Create model\n");
+    printf("Create model (%d triangles)\n", tri.size());
     
+#if 0
+    for(int i = 0; i < tri.size(); ++i) {
+      for(int d = 0; d < 3; ++d) {
+        printf("{ %f, %f, %f }\n", tri[i].v[d].x, tri[i].v[d].y, tri[i].v[d].z);
+      }
+      
+      printf("\n");
+    }
+#endif
+  
+#if 0
     // An array of 3 vectors which represents 3 vertices
     static const GLfloat g_vertex_buffer_data[] = {
       -1.0f, -1.0f, 0.0f,
       1.0f, -1.0f, 0.0f,
       0.0f,  1.0f, 0.0f,
     };
+#endif
+    
+    GLfloat vertex_buffer_data[tri.size() * 9];
+    GLfloat* ptr = &vertex_buffer_data[0];
+    
+    GLfloat color_data[tri.size() * 9];
+    
+    for(int i = 0; i < tri.size(); ++i) {
+      ptr[0] = tri[i].v[0].x;
+      ptr[1] = tri[i].v[0].y;
+      ptr[2] = tri[i].v[0].z;
+      
+      ptr[3] = tri[i].v[1].x;
+      ptr[4] = tri[i].v[1].y;
+      ptr[5] = tri[i].v[1].z;
+      
+      ptr[6] = tri[i].v[2].x;
+      ptr[7] = tri[i].v[2].y;
+      ptr[8] = tri[i].v[2].z;
+      
+      ptr += 9;
+    }
+    
+    for(int i = 0; i < tri.size() * 9; ++i) {
+      color_data[i] = (rand() % 10000) / 10000.0;
+    }
     
     // This will identify our vertex buffer
     // Generate 1 buffer, put the resulting identifier in vertexbuffer
@@ -62,7 +86,11 @@ public:
     // The following commands will talk about our 'vertexbuffer' buffer
     glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
     // Give our vertices to OpenGL.
-    glBufferData(GL_ARRAY_BUFFER, sizeof(g_vertex_buffer_data), g_vertex_buffer_data, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * 9 * tri.size(), vertex_buffer_data, GL_STATIC_DRAW);
+    
+    glGenBuffers(1, &colorBuffer);
+    glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * 9 * tri.size(), color_data, GL_STATIC_DRAW);
   }
   
   // Renders the model using the current transformation settings
@@ -71,14 +99,27 @@ public:
     glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
     glVertexAttribPointer(
       0,                  // attribute 0. No particular reason for 0, but must match the layout in the shader.
-      total_v,                  // size
+      3,                  // size
       GL_FLOAT,           // type
       GL_FALSE,           // normalized?
       0,                  // stride
       (void*)0            // array buffer offset
     );
+    
+    glEnableVertexAttribArray(1);
+    glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
+    glVertexAttribPointer(
+          1,                                // attribute. No particular reason for 1, but must match the layout in the shader.
+          3,                                // size
+          GL_FLOAT,                         // type
+          GL_FALSE,                         // normalized?
+          0,                                // stride
+           (void*)0                          // array buffer offset
+    );
+    
     // Draw the triangle !
-    glDrawArrays(GL_TRIANGLES, 0, 3); // Starting from vertex 0; 3 vertices total -> 1 triangle
+    glDrawArrays(GL_TRIANGLES, 0, tri.size() * 3); // Starting from vertex 0; 3 vertices total -> 1 triangle
+    glDisableVertexAttribArray(1);
     glDisableVertexAttribArray(0);
   }
 };
@@ -167,6 +208,10 @@ private:
     glViewport(0, 0, w, h);
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
+    
+    glEnable(GL_DEPTH_TEST);
+    // Accept fragment if it closer to the camera than the former one
+    glDepthFunc(GL_LESS);
     
     cam.near = 1;
     cam.far = 1024;
@@ -691,9 +736,32 @@ int main(int argc, char *argv[]) {
   
   engine.testInit();
   
-  Actor actor;
-  actor.model = new Model;
+  Triangle t = {
+    {
+      {-1.0f, -1.0f, 0.0f },
+      { 1.0f, -1.0f, 0.0f },
+      { 0.0f,  1.0f, 0.0f }
+    }
+  };
   
+  Triangle t2 = t;
+  
+  for(int i = 0; i < 3; ++i) {
+    t2.v[i].z += 1;
+  }
+  
+  
+  
+  Grid3D<int> g(100, 100, 100, .025, .025, .025  , 0);
+  
+  g.generate(Grid3D_Helper<int>::generateCircle);
+  //g.generate(Grid3D_Helper<int>::generateCone);
+  
+  
+  std::vector<Triangle> tt = g.triangulate(0);
+  
+  Actor actor;
+  actor.model = new Model(tt);
   
   while(!engine.quit) {
     /* Process incoming events. */

@@ -3,7 +3,7 @@ project(voxel)
 
 add_executable(voxel main.cpp)
 
-SET(CMAKE_CXX_FLAGS "-Wall")
+SET(CMAKE_CXX_FLAGS "-Wall -std=c++11")
 
 find_package(SDL REQUIRED)
 include_directories(${SDL2_INCLUDE_DIR})

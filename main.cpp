@@ -17,6 +17,104 @@
 
 #include "grid.hpp"
 
+struct BoundSphere {
+  float r;
+  glm::vec3 pos;
+  
+  bool intersect(BoundSphere& b) {
+    float dx = pos.x - b.pos.x;
+    float dy = pos.y - b.pos.y;
+    float dz = pos.z - b.pos.z;
+    
+    float r = r + b.r;
+    
+    return dx * dx + dy * dy + dz * dz < r * r;
+  }
+};
+
+struct BoundNode {
+  BoundSphere s;
+  int x1, y1, z1;
+  int x2, y2, z2;
+  int count;
+  
+  float sum_x, sum_y, sum_z;
+  
+  int total_children;
+  BoundNode* children[8];
+  BoundNode* parent;
+  
+  bool partition(int xx1, int yy1, int zz1, int xx2, int yy2, int zz2, Grid3D<int>& g, BoundNode* node_parent, int empty);
+};
+
+bool BoundNode::partition(int xx1, int yy1, int zz1, int xx2, int yy2, int zz2, Grid3D<int>& g, BoundNode* node_parent, int empty) {
+  x1 = xx1;
+  y1 = yy1;
+  z1 = zz1;
+  
+  x2 = xx2;
+  y2 = yy2;
+  z2 = zz2;
+  
+  parent = node_parent;
+  
+  for(int i = 0; i < 8; ++i)
+    children[i] = NULL;
+  
+  if(x1 == x2 && y1 == y2 && z1 == z2) {
+    if(g.get(x1, y1, z1) != empty) {
+      count = 1;
+      s.pos.x = x1 * g.grid_dx;
+      s.pos.y = y1 * g.grid_dy;
+      s.pos.z = z1 * g.grid_dz;
+      s.r = g.voxel_radius;
+      
+      return true;
+    }
+    else {
+      return false;
+    }
+  }
+  else {
+    int mx = (x1 + x2) / 2;
+    int my = (y1 + y2) / 2;
+    int mz = (z1 + z2) / 2;
+    
+    int dx = mx - x1;
+    int dy = my - y1;
+    int dz = mz - z1;
+    
+    total_children = 0;
+    sum_x = 0;
+    sum_y = 0;
+    sum_z = 0;
+    count = 0;
+    
+    for(int x = x1; x <= mx; x += dx) {
+      for(int y = y1; y <= my; y += dy) {
+	for(int z = z1; z <= mz; z += dz) {
+	  children[total_children] = new BoundNode;
+	 
+	  if(!children[total_children]->partition(x, y, z, x + dx, y + dy, z + dz, g, this, empty)) {
+	    delete children[total_children];
+	  }
+	  else {
+	    sum_x += children[total_children]->s.pos.x;
+	    sum_y += children[total_children]->s.pos.y;
+	    sum_z += children[total_children]->s.pos.z;
+	  }
+	}
+      }
+    }
+    
+    
+  }
+}
+    
+    
+    
+
+
 struct ModelTriangle {
   int v[3];
 };
@@ -28,12 +126,18 @@ private:
 public:
   GLuint vertexBuffer;
   GLuint colorBuffer;
+  Grid3D<int>* grid;
+  
+  void createGrid(int xx, int yy, int zz, float dx, float dy, float dz, int default_value) {
+    grid = new Grid3D<int>(xx, yy, zz, dx, dy, dz, default_value);
+  }
   
   //int addTriangle(
   
-  Model(std::vector<Triangle> t) {
+  
+  
+  void setTriangles(std::vector<Triangle> t) {
     tri = t;
-    
     printf("Create model (%d triangles)\n", tri.size());
     
 #if 0
@@ -750,18 +854,21 @@ int main(int argc, char *argv[]) {
     t2.v[i].z += 1;
   }
   
-  
-  
-  Grid3D<int> g(100, 100, 100, .025, .025, .025  , 0);
-  
-  g.generate(Grid3D_Helper<int>::generateCircle);
-  //g.generate(Grid3D_Helper<int>::generateCone);
-  
-  
-  std::vector<Triangle> tt = g.triangulate(0);
-  
   Actor actor;
-  actor.model = new Model(tt);
+  actor.model = new Model;
+  
+  actor.model->createGrid(100, 100, 100, .25, .25, .25, 0);
+  Grid3D<int>* g = actor.model->grid;
+  g->generate(Grid3D_Helper<int>::generateCircle);
+  
+  
+  
+  //g->generate(Grid3D_Helper<int>::generateCone);
+  
+  
+  std::vector<Triangle> tt = g->triangulate(0);
+  actor.model->setTriangles(tt);
+  
   
   while(!engine.quit) {
     /* Process incoming events. */

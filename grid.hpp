@@ -79,6 +79,7 @@ public:
   T* data;
   int x_size, y_size, z_size;
   float grid_dx, grid_dy, grid_dz;
+  float voxel_radius;
   
   Grid3D(int xx, int yy, int zz, float dx, float dy, float dz, T default_value) {
     data = new T[xx * yy * zz];

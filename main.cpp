@@ -21,14 +21,16 @@ struct BoundSphere {
   float r;
   glm::vec3 pos;
   
-  bool intersect(BoundSphere& b) {
-    float dx = pos.x - b.pos.x;
-    float dy = pos.y - b.pos.y;
-    float dz = pos.z - b.pos.z;
+  bool intersect(BoundSphere& b, glm::vec3 abs_pos, glm::vec3 abs_b_pos) {
+    glm::vec3 d = (pos + abs_pos) - (b.pos - abs_b_pos);
     
-    float r = r + b.r;
+    float rr = r + b.r;
     
-    return dx * dx + dy * dy + dz * dz < r * r;
+    float dist = d.x * d.x + d.y * d.y + d.z * d.z;
+    
+    std::cout << "Dist: " << sqrt(dist) << " " << rr << std::endl;
+    
+    return dist <= rr * rr;
   }
 };
 
@@ -45,6 +47,51 @@ struct BoundNode {
   BoundNode* parent;
   
   bool partition(int xx1, int yy1, int zz1, int xx2, int yy2, int zz2, Grid3D<int>& g, BoundNode* node_parent, int empty);
+  void print(int indent) {
+    for(int i = 0; i < indent; ++i) {
+      std::cout << "\t";
+    }
+    
+    std::cout << s.r<< std::endl;
+    
+    for(int i = 0; i < total_children; ++i) {
+      children[i]->print(indent + 1);
+    }
+  }
+  
+  ~BoundNode() {
+    for(int i = 0; i < total_children; ++i)
+      delete children[i];
+  }
+  
+  int countVoxelIntersect(BoundNode* node, glm::vec3 pos, glm::vec3 node_pos) {
+    if(!s.intersect(node->s, pos, node_pos)) {
+      return 0;
+    }
+    else {
+      if(count == 1) {
+        if(node->count == 1) {
+          return 1;
+        }
+        else {
+          for(int i = 0; i < node->total_children; ++i) {
+            if(countVoxelIntersect(node->children[i], pos, node_pos) != 0) {
+              return 1;
+            }
+          }
+          
+          return 0;
+        }
+      }
+      
+      int c = 0;
+      for(int i = 0; i < total_children; ++i) {
+        c += children[i]->countVoxelIntersect(node, pos, node_pos);
+      }
+      
+      return c;
+    }
+  }
 };
 
 bool BoundNode::partition(int xx1, int yy1, int zz1, int xx2, int yy2, int zz2, Grid3D<int>& g, BoundNode* node_parent, int empty) {
@@ -61,12 +108,15 @@ bool BoundNode::partition(int xx1, int yy1, int zz1, int xx2, int yy2, int zz2, 
   for(int i = 0; i < 8; ++i)
     children[i] = NULL;
   
-  if(x1 == x2 && y1 == y2 && z1 == z2) {
+  total_children = 0;
+  
+  if(x2 == x1 + 1 && y2 == y1 + 1 && z2 == z1 + 1) {
     if(g.get(x1, y1, z1) != empty) {
       count = 1;
-      s.pos.x = x1 * g.grid_dx;
-      s.pos.y = y1 * g.grid_dy;
-      s.pos.z = z1 * g.grid_dz;
+      s.pos.x = (x1 + .5) * g.grid_dx;
+      s.pos.y = (y1 + .5) * g.grid_dy;
+      s.pos.z = (z1 + .5) * g.grid_dz;
+      
       s.r = g.voxel_radius;
       
       return true;
@@ -84,30 +134,53 @@ bool BoundNode::partition(int xx1, int yy1, int zz1, int xx2, int yy2, int zz2, 
     int dy = my - y1;
     int dz = mz - z1;
     
-    total_children = 0;
     sum_x = 0;
     sum_y = 0;
     sum_z = 0;
     count = 0;
     
+    
+    s.r = 0;
+    
     for(int x = x1; x <= mx; x += dx) {
       for(int y = y1; y <= my; y += dy) {
-	for(int z = z1; z <= mz; z += dz) {
-	  children[total_children] = new BoundNode;
-	 
-	  if(!children[total_children]->partition(x, y, z, x + dx, y + dy, z + dz, g, this, empty)) {
-	    delete children[total_children];
-	  }
-	  else {
-	    sum_x += children[total_children]->s.pos.x;
-	    sum_y += children[total_children]->s.pos.y;
-	    sum_z += children[total_children]->s.pos.z;
-	  }
-	}
+        for(int z = z1; z <= mz; z += dz) {
+          children[total_children] = new BoundNode;
+        
+          if(!children[total_children]->partition(x, y, z, x + dx, y + dy, z + dz, g, this, empty)) {
+            delete children[total_children];
+          }
+          else {
+            sum_x += children[total_children]->s.pos.x;
+            sum_y += children[total_children]->s.pos.y;
+            sum_z += children[total_children]->s.pos.z;
+            count += children[total_children]->count;
+            
+            ++total_children;
+          }
+        }
       }
     }
     
-    
+    if(total_children > 0 && count > 0) {
+      s.pos.x = sum_x / total_children;
+      s.pos.y = sum_y / total_children;
+      s.pos.z = sum_z / total_children;
+      
+      for(int i = 0; i < total_children; ++i) {
+        float dx = children[i]->s.pos.x - s.pos.x;
+        float dy = children[i]->s.pos.y - s.pos.y;
+        float dz = children[i]->s.pos.z - s.pos.z;
+        float r = sqrt(dx * dx + dy * dy + dz * dz) + children[i]->s.r;
+        
+        s.r = std::max(s.r, r);
+      }
+      
+      return true;
+    }
+    else {
+      return false;
+    }
   }
 }
     
@@ -127,6 +200,14 @@ public:
   GLuint vertexBuffer;
   GLuint colorBuffer;
   Grid3D<int>* grid;
+  BoundNode bound_root;
+  
+  void createBound() {
+    std::cout << "Create bounding tree" << std::endl;
+    bound_root.partition(0, 0, 0, grid->x_size, grid->y_size, grid->z_size, *grid, NULL, 0);
+    
+    std::cout << bound_root.s.pos.x << " " << bound_root.s.pos.y << " " << bound_root.s.pos.z << " " << std::endl;
+  }
   
   void createGrid(int xx, int yy, int zz, float dx, float dy, float dz, int default_value) {
     grid = new Grid3D<int>(xx, yy, zz, dx, dy, dz, default_value);
@@ -162,7 +243,7 @@ public:
     GLfloat vertex_buffer_data[tri.size() * 9];
     GLfloat* ptr = &vertex_buffer_data[0];
     
-    GLfloat color_data[tri.size() * 9];
+    GLfloat color_data[tri.size() * 12];
     
     for(int i = 0; i < tri.size(); ++i) {
       ptr[0] = tri[i].v[0].x;
@@ -180,8 +261,20 @@ public:
       ptr += 9;
     }
     
-    for(int i = 0; i < tri.size() * 9; ++i) {
-      color_data[i] = (rand() % 10000) / 10000.0;
+    static int count = 0;
+    
+    ++count;
+    
+    for(int i = 0; i < tri.size() * 12; ++i) {
+      if((i % 4) != 3) {
+        color_data[i] = (rand() % 10000) / 10000.0;
+      }
+      else {
+        if(count == 1)
+          color_data[i] = 0;
+        else
+          color_data[i] = 1;
+      }
     }
     
     // This will identify our vertex buffer
@@ -194,7 +287,7 @@ public:
     
     glGenBuffers(1, &colorBuffer);
     glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * 9 * tri.size(), color_data, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * 12 * tri.size(), color_data, GL_STATIC_DRAW);
   }
   
   // Renders the model using the current transformation settings
@@ -214,7 +307,7 @@ public:
     glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
     glVertexAttribPointer(
           1,                                // attribute. No particular reason for 1, but must match the layout in the shader.
-          3,                                // size
+          4,                                // size
           GL_FLOAT,                         // type
           GL_FALSE,                         // normalized?
           0,                                // stride
@@ -239,8 +332,14 @@ public:
   
   Actor() {
     model = NULL;
-    angle = glm::vec3(0, 0, 0);
+    angle = glm::vec3(0.0f, 0.0f, 0.0f);
     mat = glm::mat4x4(1.0f);
+    pos = glm::vec3(0.0f, 0.0f, 0.0f);
+  }
+  
+  void updatePos() {
+    glm::vec4 p = glm::vec4(pos.x, pos.y, pos.z, 1);
+    mat[3] = p;
   }
   
   void render() {
@@ -260,7 +359,7 @@ public:
 };
 
 class Engine {
-private:
+public:
   SDL_Surface* screen;
   GLuint programID;
   Camera cam;
@@ -304,9 +403,9 @@ private:
   bool initOpenGL(int w, int h) {
     float ratio = (float)w / h;
     
-    glCullFace(GL_BACK);
-    glFrontFace(GL_CCW);
-    glEnable(GL_CULL_FACE);
+    //glCullFace(GL_BACK);
+    //glFrontFace(GL_CCW);
+    //glEnable(GL_CULL_FACE);
     
     glShadeModel(GL_SMOOTH);
     glViewport(0, 0, w, h);
@@ -316,6 +415,10 @@ private:
     glEnable(GL_DEPTH_TEST);
     // Accept fragment if it closer to the camera than the former one
     glDepthFunc(GL_LESS);
+    
+    // Enable blending
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     
     cam.near = 1;
     cam.far = 1024;
@@ -857,21 +960,63 @@ int main(int argc, char *argv[]) {
   Actor actor;
   actor.model = new Model;
   
-  actor.model->createGrid(100, 100, 100, .25, .25, .25, 0);
+  actor.model->createGrid(32, 32, 32, 1, 1, 1, 1);
   Grid3D<int>* g = actor.model->grid;
-  g->generate(Grid3D_Helper<int>::generateCircle);
-  
-  
-  
+
+  //g->generate(Grid3D_Helper<int>::generateCircle);
   //g->generate(Grid3D_Helper<int>::generateCone);
-  
   
   std::vector<Triangle> tt = g->triangulate(0);
   actor.model->setTriangles(tt);
+  actor.model->createBound();
+  
+  //======================================================
+  
+  Actor actor2;
+  actor2.model = new Model;
+  
+  actor2.model->createGrid(8, 8, 8, 1, 1, 1, 1);
+  Grid3D<int>* g2 = actor2.model->grid;
+  
+  g2->generate(Grid3D_Helper<int>::generateCircle);
+  //g->generate(Grid3D_Helper<int>::generateCone);
+  
+  std::vector<Triangle> tt2 = g2->triangulate(0);
+  actor2.model->setTriangles(tt2);
+  actor2.model->createBound();
+  
+  //======================================================
   
   
   while(!engine.quit) {
     /* Process incoming events. */
+    
+    if(engine.keyDown(SDLK_RETURN)) {
+      std::cout << "Intersect: " << actor2.model->bound_root.countVoxelIntersect(&actor.model->bound_root, 
+        actor2.pos, actor.pos
+        
+      ) << std::endl;
+      
+      SDL_Delay(1000);
+    }
+    
+    if(engine.keyDown(SDLK_RIGHT)) {
+      actor2.pos.x += .1;
+      actor2.updatePos();
+    }
+    if(engine.keyDown(SDLK_LEFT)) {
+      actor2.pos.x -= .1;
+      actor2.updatePos();
+    }
+    if(engine.keyDown(SDLK_UP)) {
+      actor2.pos.z += .1;
+      actor2.updatePos();
+    }
+    
+    if(engine.keyDown(SDLK_DOWN)) {
+      actor2.pos.z -= .1;
+      actor2.updatePos();
+    }
     
     engine.deltaTime = 1.0 / 60.0;
     
@@ -884,6 +1029,7 @@ int main(int argc, char *argv[]) {
     
     engine.render();
     engine.renderActor(actor);
+    engine.renderActor(actor2);
     
     //SDL_Delay(1);
     

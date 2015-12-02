@@ -1,8 +1,12 @@
 #version 330 core
-out vec3 color;
+out vec4 color;
 
-in vec3 fragmentColor;
+in vec4 fragmentColor;
 
 void main(){
   color = fragmentColor;
+  
+  if(color.a == 0) {
+    discard;
+  }
 }

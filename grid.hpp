@@ -95,6 +95,9 @@ public:
     for(int i = 0; i < xx * yy * zz; ++i) {
       data[i] = default_value;
     }
+    
+    float r = std::max(grid_dx, std::max(grid_dy, grid_dz)) / 2.0;
+    voxel_radius = sqrt(3 * r * r);
   }
   
   bool validPos(int x, int y, int z) {

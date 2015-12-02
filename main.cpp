@@ -213,6 +213,10 @@ public:
     grid = new Grid3D<int>(xx, yy, zz, dx, dy, dz, default_value);
   }
   
+  void deleteVoxel(int x, int y, int z) {
+    //glBufferSubData();
+  }
+  
   //int addTriangle(
   
   

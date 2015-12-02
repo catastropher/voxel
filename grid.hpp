@@ -73,6 +73,11 @@ struct Cube {
   
 };
 
+struct TriangleRun {
+  int start;
+  int end;
+};
+
 template<typename T>
 class Grid3D {
 public:
@@ -80,9 +85,12 @@ public:
   int x_size, y_size, z_size;
   float grid_dx, grid_dy, grid_dz;
   float voxel_radius;
+  TriangleRun* triangle_run;
+  
   
   Grid3D(int xx, int yy, int zz, float dx, float dy, float dz, T default_value) {
     data = new T[xx * yy * zz];
+    triangle_run = new TriangleRun[xx * yy * zz];
     
     x_size = xx;
     y_size = yy;
@@ -94,6 +102,8 @@ public:
     
     for(int i = 0; i < xx * yy * zz; ++i) {
       data[i] = default_value;
+      triangle_run[i].start = -1;
+      triangle_run[i].end = -1;
     }
     
     float r = std::max(grid_dx, std::max(grid_dy, grid_dz)) / 2.0;
@@ -156,6 +166,11 @@ public:
       for(int y = 0; y < y_size; ++y) {
         for(int x = 0; x < x_size; ++x) {
           if(*ptr != empty) {
+            int pos = ptr - data;
+            
+            triangle_run[pos].start = t.size();
+            triangle_run[pos].end = (int)t.size() - 1;
+            
             for(int i = 0; i < 6; ++i) {
               Cube c;
               c.x_size = grid_dx;
@@ -171,6 +186,7 @@ public:
                 c.getFace(i).triangulate(a, b);
                 t.push_back(a);
                 t.push_back(b);
+                triangle_run[pos].end += 2;
               }
             }
           }

@@ -17,6 +17,21 @@
 
 #include "grid.hpp"
 
+struct Color {
+  float r, g, b;
+  
+  Color randomShade() {
+    float scale = (rand() % 100000) / 100000.0;
+    
+    return (Color) { r * scale, g * scale, b * scale };
+  }
+};
+
+const Color COLOR_RED = (Color) { 1.0, 0, 0 };
+const Color COLOR_GREEN = (Color) { 0, 1.0, 0 };
+const Color COLOR_BLUE = (Color) { 0, 0, 1.0 };
+const Color COLOR_ORANGE = (Color) { 1.0, .5468, 0 };
+
 struct BoundSphere {
   float r;
   glm::vec3 pos;
@@ -218,7 +233,27 @@ public:
     grid = new Grid3D<int>(xx, yy, zz, dx, dy, dz, default_value);
   }
   
-  void deleteVoxel(int x, int y, int z) {
+  void colorModel(Color c) {
+    GLfloat* color_data = new GLfloat[tri.size() * 16];
+    
+    for(int i = 0; i < tri.size(); ++i) {
+      for(int d = 0; d < 3; ++d) {
+        Color rc = c.randomShade();
+        
+        color_data[i * 12 + d * 4 + 0] = rc.r;
+        color_data[i * 12 + d * 4 + 1] = rc.g;
+        color_data[i * 12 + d * 4 + 2] = rc.b;
+        color_data[i * 12 + d * 4 + 3] = 1;
+      }
+    }
+    
+    glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(GLfloat) * 16 * tri.size(), color_data);
+    
+    delete [] color_data;
+  }
+  
+  void deleteVoxel(int x, int y, int z, Color c) {
     TriangleRun* run = &grid->triangle_run[grid->index(x, y, z)];
     GLfloat value = 0.0f;
     int& val = grid->get(x, y, z);
@@ -256,22 +291,14 @@ public:
       GLfloat* ptr = vertex_data;
       
       for(int i = 0; i < total; ++i) {
-        color_data[i * 16 + 0] = (rand() % 10000) / 10000.0;
-        color_data[i * 16 + 1] = (rand() % 10000) / 10000.0;
-        color_data[i * 16 + 2] = (rand() % 10000) / 10000.0;
-        color_data[i * 16 + 3] = 1.0f;
-        color_data[i * 16 + 4] = (rand() % 10000) / 10000.0;
-        color_data[i * 16 + 5] = (rand() % 10000) / 10000.0;
-        color_data[i * 16 + 6] = (rand() % 10000) / 10000.0;
-        color_data[i * 16 + 7] = 1.0f;
-        color_data[i * 16 + 8] = (rand() % 10000) / 10000.0;
-        color_data[i * 16 + 9] = (rand() % 10000) / 10000.0;
-        color_data[i * 16 + 10] = (rand() % 10000) / 10000.0;
-        color_data[i * 16 + 11] = 1.0f;
-        color_data[i * 16 + 12] = (rand() % 10000) / 10000.0;
-        color_data[i * 16 + 13] = (rand() % 10000) / 10000.0;
-        color_data[i * 16 + 14] = (rand() % 10000) / 10000.0;
-        color_data[i * 16 + 15] = 1.0f;
+        for(int d = 0; d < 3; ++d) {
+          Color rc = c.randomShade();
+          
+          color_data[i * 12 + d * 4 + 0] = rc.r;
+          color_data[i * 12 + d * 4 + 1] = rc.g;
+          color_data[i * 12 + d * 4 + 2] = rc.b;
+          color_data[i * 12 + d * 4 + 3] = 1;
+        }
         
         
         ptr[0] = tri[i + start].v[0].x;
@@ -354,7 +381,10 @@ public:
     
     for(int i = 0; i < tri.size() * 12; ++i) {
       if((i % 4) != 3) {
-        color_data[i] = (rand() % 10000) / 10000.0;
+        if((i % 4) == 1)
+          color_data[i] = (rand() % 10000) / 10000.0;
+        else
+          color_data[i] = 0;
       }
       else {
         if(count == 1)
@@ -493,11 +523,12 @@ public:
   bool initOpenGL(int w, int h) {
     float ratio = (float)w / h;
     
-    //glCullFace(GL_BACK);
-    //glFrontFace(GL_CCW);
-    //glEnable(GL_CULL_FACE);
+    glCullFace(GL_BACK);
+    glFrontFace(GL_CCW);
+    glEnable(GL_CULL_FACE);
     
     glShadeModel(GL_SMOOTH);
+    //glShadeModel(GL_FLAT);
     glViewport(0, 0, w, h);
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
@@ -1006,24 +1037,24 @@ void Engine::handleKeys() {
   }
   
   if(keyDown(SDLK_w)) {
-    cam.pos += cam.direction * deltaTime * 3.0f;
+    cam.pos += cam.direction * deltaTime * 6.0f;
   }
   else if(keyDown(SDLK_s)) {
-    cam.pos -= cam.direction * deltaTime * 3.0f;
+    cam.pos -= cam.direction * deltaTime * 6.0f;
   }
   
   if(keyDown(SDLK_a)) {
-    cam.pos -= cam.right * deltaTime * 3.0f;
+    cam.pos -= cam.right * deltaTime * 6.0f;
   }
   else if(keyDown(SDLK_d)) {
-    cam.pos += cam.right * deltaTime * 3.0f;
+    cam.pos += cam.right * deltaTime * 6.0f;
   }
 }
 
 int main(int argc, char *argv[]) {
   Engine engine;
   
-  if (!engine.init(640, 480)) {
+  if (!engine.init(1024, 768)) {
     fprintf(stderr,  "Failed to initialize engine\n");
     SDL_Quit();
     return 0;
@@ -1077,9 +1108,28 @@ int main(int argc, char *argv[]) {
   
   //======================================================
   
+  actor2.model->colorModel(COLOR_RED);
+  
+  Color colors[] = {
+    COLOR_RED,
+    COLOR_GREEN,
+    COLOR_BLUE,
+    COLOR_ORANGE
+  };
+  
+  Color color = colors[0];
   
   while(!engine.quit) {
     /* Process incoming events. */
+    
+    
+    
+    for(int i = SDLK_1; i <= SDLK_4; ++i) {
+      if(engine.keyDown(i)) {
+        actor2.model->colorModel(colors[i - SDLK_1]);
+        color = colors[i - SDLK_1];
+      }
+    }
     
     if(engine.keyDown(SDLK_LCTRL)) {
       std::vector<Vex3D> inter;
@@ -1088,7 +1138,7 @@ int main(int argc, char *argv[]) {
       actor.model->bound_root.countVoxelIntersect(&actor2.model->bound_root, actor.pos, actor2.pos, inter);
       
       for(int i = 0; i < inter.size(); ++i) {
-        actor.model->deleteVoxel(inter[i].x, inter[i].y, inter[i].z);
+        actor.model->deleteVoxel(inter[i].x, inter[i].y, inter[i].z, color);
       }
     }
     

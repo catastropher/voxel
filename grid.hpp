@@ -1,6 +1,8 @@
 #include <cstring>
 #include <vector>
 #include <algorithm>
+#include <string>
+#include <cctype>
 
 #include "glm/glm.hpp"
 
@@ -269,6 +271,8 @@ public:
 template<typename T>
 class Grid3D_Helper {
 public:
+  static std::string expression;
+  
   static T generateCircle(int x, int y, int z, Grid3D<T> &g) {
     int r = std::min(g.x_size, std::min(g.y_size, g.z_size)) / 2;
     
@@ -287,5 +291,269 @@ public:
     
     return x * x + z * z < r * r;
   }
+  
+  static bool isOperator(char c) {
+    return c == '+' ||
+      c == '-' ||
+      c == '*' ||
+      c == '/' ||
+      c == '^' ||
+      c == '=' ||
+      c == '<' ||
+      c == '>' ||
+      c == '!' ||
+      c == '@' ||
+      c == '&' ||
+      c == '|';
+  }
+  
+  static float evalParenthesis(char* start, char* end) {
+    return evalParenthesis(start + 1, end - 1);
+  }
+  
+  static float evaluateExpression(char* start, char* end, int x, int y, int z, Grid3D<T> &g) {
+    std::vector<float> stack;
+    std::vector<std::string> tokens;
+    int r = std::min(g.x_size, std::min(g.y_size, g.z_size)) / 2;
+    
+    while(start < end) {
+      while(start < end && *start == ' ')
+        ++start;
+      
+      if(isdigit(*start)) {
+        std::string token;
+        
+        while(isdigit(*start) || *start == '.') {
+          token += *start;
+          ++start;
+        }
+        
+        tokens.push_back(token);
+      }
+      else if(isOperator(*start)) {
+        int offset = 1;
+        
+        //printf("Start: %c\n", *start);
+        
+        char old_start = *start;
+        
+        if((*start == '<' || *start == '>') && start[1] == '=') {
+          ++offset;
+          
+          if(*start == '<') {
+            *start = '!';
+          }
+          else {
+            *start = '@';
+          }
+        }
+        
+        
+        tokens.push_back(std::string(start, start + 1));
+        
+        *start = old_start;
+        
+        start += offset;
+      }
+      else if(isalpha(*start) || *start == '(') {
+        std::string token;
+        bool par = false;
+        
+        while(isalpha(*start) || *start == '(') {
+          token += *start;
+          par |= *start == '(';
+          ++start;
+        }
+        
+        if(par) {
+          while(start < end && *start != ')') {
+            token += *start;
+            ++start;
+          }
+          
+          if(*start != ')') {
+            throw "Unmatched parenthesis in expression";
+          }
+          else {
+            ++start;
+          }
+          
+          token = "~" + token;
+        }
+        
+        tokens.push_back(token);
+      }
+      else {
+        throw "Unexpected character: " + std::string(start, start + 1);
+      }
+      
+    }
+    
+    for(int i = 0; i < tokens.size(); ++i) {
+      float value;
+      
+      if(isdigit(tokens[i][0])) {
+        stack.push_back(atof(tokens[i].c_str()));
+      }
+      else if(isOperator(tokens[i][0])) {
+        if(stack.size() < 2) {
+          throw "Too few operands for operator '" + tokens[i] + "'";
+        }
+        
+        float val2 = stack[stack.size() - 1];
+        stack.pop_back();
+        
+        float val1 = stack[stack.size() - 1];
+        stack.pop_back();
+        
+        switch(tokens[i][0]) {
+          case '+':
+            value = val1 + val2;
+            break;
+            
+          case '-':
+            value = val1 - val2;
+            break;
+            
+          case '*':
+            value = val1 * val2;
+            break;
+            
+          case '/':
+            value = val1 / val2;
+            break;
+            
+          case '=':
+            value = abs(val1 - val2) < 1;
+            break;
+            
+          case '<':
+            value = val1 < val2;
+            break;
+            
+          case '>':
+            value = val1 > val2;
+            break;
+            
+          case '!':
+            value = val1 <= val2;
+            break;
+            
+          case '@':
+            value = val1 >= val2;
+            break;
+            
+          case '^':
+            value = pow(val1, val2);
+            break;
+            
+          case '&':
+            value = val1 && val2;
+            break;
+            
+          case '|':
+            value = val1 || val2;
+            break;
+        }
+        
+        stack.push_back(value);
+      }
+      else if(tokens[i][0] != '~') {
+        std::string t = tokens[i];
+        
+        if(t == "x")
+          value = x;
+        else if(t == "y")
+          value = y;
+        else if(t == "z")
+          value = z;
+        else if(t == "PI")
+          value = 3.1415926;
+        else if(t == "E")
+          value = 2.71828;
+        else if(t == "cx")
+          value = x - r;
+        else if(t == "cy")
+          value = y - r;
+        else if(t == "cz")
+          value = z - r;
+        else if(t == "r") {
+          value = r;
+        }
+        else if(t == "sr") {
+          float xx = x - r;
+          float yy = y - r;
+          float zz = z - r;
+          
+          value = sqrt(xx * xx + yy * yy + zz * zz);
+        }
+        else if(t == "cr") {
+          float xx = x - r;
+          float yy = y - r;
+          float zz = z - r;
+          
+          value = sqrt(xx * xx + zz * zz);
+        }
+        else if(t == "cos") {
+          float v = stack[stack.size() - 1];
+          stack.pop_back();
+          
+          value = cos(v);
+        }
+        else if(t == "sin") {
+          float v = stack[stack.size() - 1];
+          stack.pop_back();
+          
+          value = cos(v);
+        }
+        
+        else if(t == "sqrt") {
+          float v = stack[stack.size() - 1];
+          stack.pop_back();
+          
+          value = sqrt(v);
+        }
+        else if(t == "abs") {
+          float v = stack[stack.size() - 1];
+          stack.pop_back();
+          
+          value = abs(v);
+        }
+        else if(t == "not") {
+          float v = stack[stack.size() - 1];
+          stack.pop_back();
+          
+          value = !v;
+        }
+        
+        else if(t == "sphere") {
+          int r = std::min(g.x_size, std::min(g.y_size, g.z_size)) / 2;
+          
+          float xx = x - r;
+          float yy = y - r;
+          float zz = z - r;
+          
+          value = xx * xx + yy * yy + zz * zz < r * r;
+        }
+        
+        stack.push_back(value);
+        
+      }
+    }
+    
+    return stack[0];
+  }
+  
+  static T evalulateVoxelExpression(int x, int y, int z, Grid3D<T>& g) {
+    return evaluateExpression(&expression[0], &expression[expression.size()], x, y, z, g);
+  }
+  
+  static T evaluateFormula(Grid3D<T>& g, std::string exp) {
+    expression = exp;
+    g.generate(evalulateVoxelExpression);
+  }
+  
 };
 
+template<typename T>
+std::string Grid3D_Helper<T>::expression;

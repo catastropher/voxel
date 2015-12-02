@@ -1,0 +1,1 @@
+cx 5 / sin 5 * cz 5 / sin 5 * + cy =

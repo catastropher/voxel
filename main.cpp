@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <map>
+#include <cassert>
 
 #include <SDL/SDL.h>
 #include <GL/gl.h>
@@ -31,6 +32,7 @@ const Color COLOR_RED = (Color) { 1.0, 0, 0 };
 const Color COLOR_GREEN = (Color) { 0, 1.0, 0 };
 const Color COLOR_BLUE = (Color) { 0, 0, 1.0 };
 const Color COLOR_ORANGE = (Color) { 1.0, .5468, 0 };
+const Color COLOR_YELLOW = (Color) { 1.0, 1.0, 0 };
 
 struct BoundSphere {
   float r;
@@ -51,6 +53,7 @@ struct BoundSphere {
 
 struct Vex3D {
   int x, y, z;
+  int x2, y2, z2;
 };
 
 struct BoundNode {
@@ -90,7 +93,7 @@ struct BoundNode {
     else {
       if(count == 1) {
         if(node->count == 1) {
-          inter.push_back((Vex3D) { x1, y1, z1 });
+          inter.push_back((Vex3D) { x1, y1, z1, node->x1, node->y1, node->z1});
           return 1;
         }
         else {
@@ -114,6 +117,8 @@ struct BoundNode {
   }
 };
 
+#undef NDEBUG
+
 bool BoundNode::partition(int xx1, int yy1, int zz1, int xx2, int yy2, int zz2, Grid3D<int>& g, BoundNode* node_parent, int empty) {
   x1 = xx1;
   y1 = yy1;
@@ -130,8 +135,12 @@ bool BoundNode::partition(int xx1, int yy1, int zz1, int xx2, int yy2, int zz2, 
   
   total_children = 0;
   
+  assert(x1 != x2);
+  assert(y1 != y2);
+  assert(z1 != z2);
+  
   if(x2 == x1 + 1 && y2 == y1 + 1 && z2 == z1 + 1) {
-    if(g.get(x1, y1, z1) != empty) {
+    if(/*g.get(x1, y1, z1) != empty*/true) {
       count = 1;
       s.pos.x = (x1 + .5) * g.grid_dx;
       s.pos.y = (y1 + .5) * g.grid_dy;
@@ -162,12 +171,20 @@ bool BoundNode::partition(int xx1, int yy1, int zz1, int xx2, int yy2, int zz2, 
     
     s.r = 0;
     
-    for(int x = x1; x <= mx; x += dx) {
-      for(int y = y1; y <= my; y += dy) {
-        for(int z = z1; z <= mz; z += dz) {
+    int xx = dx == 0 ? 1 : dx;
+    int yy = dy == 0 ? 1 : dy;
+    int zz = dz == 0 ? 1 : dz;
+    
+    
+    
+    for(int x = x1; x <= mx; x += xx) {
+      for(int y = y1; y <= my; y += yy) {
+        for(int z = z1; z <= mz; z += zz) {
+          
+          
           children[total_children] = new BoundNode;
         
-          if(!children[total_children]->partition(x, y, z, x + dx, y + dy, z + dz, g, this, empty)) {
+          if(!children[total_children]->partition(x, y, z, x + xx, y + yy, z + zz, g, this, empty)) {
             delete children[total_children];
           }
           else {
@@ -221,6 +238,17 @@ public:
   GLuint colorBuffer;
   Grid3D<int>* grid;
   BoundNode bound_root;
+  
+  void deleteAllInTree(BoundNode* node) {
+    if(node->count == 1) {
+      deleteVoxel(node->x1, node->y1, node->z1, COLOR_BLUE);
+    }
+    else {
+      for(int i = 0; i < node->total_children; ++i) {
+        deleteAllInTree(node->children[i]);
+      }
+    }
+  }
   
   void createBound() {
     std::cout << "Create bounding tree" << std::endl;
@@ -1037,22 +1065,36 @@ void Engine::handleKeys() {
   }
   
   if(keyDown(SDLK_w)) {
-    cam.pos += cam.direction * deltaTime * 6.0f;
+    cam.pos += cam.direction * deltaTime * 8.0f;
   }
   else if(keyDown(SDLK_s)) {
-    cam.pos -= cam.direction * deltaTime * 6.0f;
+    cam.pos -= cam.direction * deltaTime * 8.0f;
   }
   
   if(keyDown(SDLK_a)) {
-    cam.pos -= cam.right * deltaTime * 6.0f;
+    cam.pos -= cam.right * deltaTime * 8.0f;
   }
   else if(keyDown(SDLK_d)) {
-    cam.pos += cam.right * deltaTime * 6.0f;
+    cam.pos += cam.right * deltaTime * 8.0f;
   }
 }
 
 int main(int argc, char *argv[]) {
   Engine engine;
+  
+  std::cout << "Map formula: ";
+  std::string exp;
+  getline(std::cin, exp);
+  
+  std::cout << "Cutter formula: ";
+  std::string exp2;
+  getline(std::cin, exp2);
+  
+  if(exp == "")
+    exp = "1";
+  
+  if(exp2 == "")
+    exp2 = "1";
   
   if (!engine.init(1024, 768)) {
     fprintf(stderr,  "Failed to initialize engine\n");
@@ -1083,6 +1125,19 @@ int main(int argc, char *argv[]) {
   
   actor.model->createGrid(64, 64, 64, 1, 1, 1, 1);
   Grid3D<int>* g = actor.model->grid;
+  
+  try {
+    Grid3D_Helper<int>::evaluateFormula(*g, exp);
+    
+  }
+  catch(const char* s) {
+    std::cout << "ERROR: " << s << std::endl;
+    throw;
+  }
+  catch(std::string s) {
+    std::cout << "ERROR: " << s << std::endl;
+    throw;
+  }
 
   //g->generate(Grid3D_Helper<int>::generateCircle);
   //g->generate(Grid3D_Helper<int>::generateCone);
@@ -1099,8 +1154,21 @@ int main(int argc, char *argv[]) {
   actor2.model->createGrid(16, 16, 16, 1, 1, 1, 1);
   Grid3D<int>* g2 = actor2.model->grid;
   
-  g2->generate(Grid3D_Helper<int>::generateCircle);
-  //g->generate(Grid3D_Helper<int>::generateCone);
+  //g2->generate(Grid3D_Helper<int>::generateCircle);
+  //g2->generate(Grid3D_Helper<int>::generateCone);
+  
+  try {
+    Grid3D_Helper<int>::evaluateFormula(*g2, exp2);
+    
+  }
+  catch(const char* s) {
+    std::cout << "ERROR: " << s << std::endl;
+    throw;
+  }
+  catch(std::string s) {
+    std::cout << "ERROR: " << s << std::endl;
+    throw;
+  }
   
   std::vector<Triangle> tt2 = g2->triangulate(0);
   actor2.model->setTriangles(tt2);
@@ -1114,7 +1182,8 @@ int main(int argc, char *argv[]) {
     COLOR_RED,
     COLOR_GREEN,
     COLOR_BLUE,
-    COLOR_ORANGE
+    COLOR_ORANGE,
+    COLOR_YELLOW
   };
   
   Color color = colors[0];
@@ -1124,10 +1193,24 @@ int main(int argc, char *argv[]) {
     
     
     
-    for(int i = SDLK_1; i <= SDLK_4; ++i) {
+    for(int i = SDLK_1; i <= SDLK_5; ++i) {
       if(engine.keyDown(i)) {
         actor2.model->colorModel(colors[i - SDLK_1]);
         color = colors[i - SDLK_1];
+      }
+    }
+    
+    if(engine.keyDown(SDLK_RETURN)) {
+      actor.model->deleteAllInTree(&actor.model->bound_root);
+      
+      for(int x = 0; x < g->x_size; ++x) {
+        for(int y = 0; y < g->y_size; ++y) {
+          for(int z = 0; z < g->z_size; ++z) {
+            if(g->get(x, y, z) != 0) {
+              printf("ERROR\n");
+            }
+          }
+        }
       }
     }
     
@@ -1138,7 +1221,9 @@ int main(int argc, char *argv[]) {
       actor.model->bound_root.countVoxelIntersect(&actor2.model->bound_root, actor.pos, actor2.pos, inter);
       
       for(int i = 0; i < inter.size(); ++i) {
-        actor.model->deleteVoxel(inter[i].x, inter[i].y, inter[i].z, color);
+        if(actor2.model->grid->get(inter[i].x2, inter[i].y2, inter[i].z2) != 0) {
+          actor.model->deleteVoxel(inter[i].x, inter[i].y, inter[i].z, color);
+        }
       }
     }
     

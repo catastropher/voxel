@@ -71,11 +71,24 @@ struct Cube {
     return q;
   }
   
+  static int oppositeFace(int f) {
+    if(f < 2)
+      return !f;
+    else
+      return (f % 4) + 2;
+  }
+  
 };
 
 struct TriangleRun {
   int start;
   int end;
+  
+  TriangleRun* next;
+  
+  TriangleRun() {
+    next = NULL;
+  }
 };
 
 template<typename T>
@@ -107,7 +120,7 @@ public:
     }
     
     float r = std::max(grid_dx, std::max(grid_dy, grid_dz)) / 2.0;
-    voxel_radius = sqrt(3 * r * r);
+    voxel_radius = sqrt(3 * r * r) * .75;
   }
   
   bool validPos(int x, int y, int z) {
@@ -116,6 +129,10 @@ public:
   
   T& get(int x, int y, int z) {
     return data[x + y * x_size + z * y_size * x_size];
+  }
+  
+  int index(int x, int y, int z) {
+    return x + y * x_size + z * y_size * x_size;
   }
   
   bool shouldGeneratePoly(int x, int y, int z, int face, T& empty) {
@@ -154,6 +171,53 @@ public:
           *ptr = eval(x, y, z, *this);
           ++ptr;
         }
+      }
+    }
+  }
+  
+  void updateDeletedVoxelNeighbors(int x, int y, int z, std::vector<Triangle>& v, T empty) {
+    int offset[6][3] = {
+      { 0, -1, 0 },
+      { 0, 1, 0 },
+      { -1, 0, 0 },
+      { 0, 0, 1 },
+      { 1, 0, 0 },
+      { 0, 0, -1 }
+    };
+    
+    for(int i = 0; i < 6; ++i) {
+      int xx = x + offset[i][0];
+      int yy = y + offset[i][1];
+      int zz = z + offset[i][2];
+      
+      if(validPos(xx, yy, zz) && get(xx, yy, zz) != 0 && shouldGeneratePoly(xx, yy, zz, Cube::oppositeFace(i), empty)) {
+        TriangleRun* run = &triangle_run[index(xx, yy, zz)];
+        
+        while(run->next) {
+          run = run->next;
+        }
+        
+        TriangleRun* new_run = new TriangleRun;
+        
+        new_run->start = v.size();
+        new_run->end = (int)v.size() - 1;
+        
+        Cube c;
+        c.x_size = grid_dx;
+        c.y_size = grid_dy;
+        c.z_size = grid_dz;
+        
+        c.setPos(glm::vec3(xx * grid_dx, yy * grid_dy, zz * grid_dz));
+        
+        Quad q;
+        Triangle a, b;
+        
+        c.getFace(Cube::oppositeFace(i)).triangulate(a, b);
+        v.push_back(a);
+        v.push_back(b);
+        new_run->end += 2;
+        
+        run->next = new_run;
       }
     }
   }

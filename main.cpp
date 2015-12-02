@@ -22,16 +22,20 @@ struct BoundSphere {
   glm::vec3 pos;
   
   bool intersect(BoundSphere& b, glm::vec3 abs_pos, glm::vec3 abs_b_pos) {
-    glm::vec3 d = (pos + abs_pos) - (b.pos - abs_b_pos);
+    glm::vec3 d = (pos + abs_pos) - (b.pos + abs_b_pos);
     
     float rr = r + b.r;
     
     float dist = d.x * d.x + d.y * d.y + d.z * d.z;
     
-    std::cout << "Dist: " << sqrt(dist) << " " << rr << std::endl;
+    //std::cout << "Dist: " << sqrt(dist) << " " << rr << std::endl;
     
     return dist <= rr * rr;
   }
+};
+
+struct Vex3D {
+  int x, y, z;
 };
 
 struct BoundNode {
@@ -64,18 +68,19 @@ struct BoundNode {
       delete children[i];
   }
   
-  int countVoxelIntersect(BoundNode* node, glm::vec3 pos, glm::vec3 node_pos) {
+  int countVoxelIntersect(BoundNode* node, glm::vec3 pos, glm::vec3 node_pos, std::vector<Vex3D>& inter) {
     if(!s.intersect(node->s, pos, node_pos)) {
       return 0;
     }
     else {
       if(count == 1) {
         if(node->count == 1) {
+          inter.push_back((Vex3D) { x1, y1, z1 });
           return 1;
         }
         else {
           for(int i = 0; i < node->total_children; ++i) {
-            if(countVoxelIntersect(node->children[i], pos, node_pos) != 0) {
+            if(countVoxelIntersect(node->children[i], pos, node_pos, inter) != 0) {
               return 1;
             }
           }
@@ -86,7 +91,7 @@ struct BoundNode {
       
       int c = 0;
       for(int i = 0; i < total_children; ++i) {
-        c += children[i]->countVoxelIntersect(node, pos, node_pos);
+        c += children[i]->countVoxelIntersect(node, pos, node_pos, inter);
       }
       
       return c;
@@ -214,14 +219,90 @@ public:
   }
   
   void deleteVoxel(int x, int y, int z) {
-    //glBufferSubData();
+    TriangleRun* run = &grid->triangle_run[grid->index(x, y, z)];
+    GLfloat value = 0.0f;
+    int& val = grid->get(x, y, z);
+    
+    if(val != 0) {
+      while(run) {
+        if(run->start >= 0 && run->end >= 0 && run->start <= run->end) {
+        
+          //std::cout << "Run start: " << run->start << " " << run->end << std::endl;
+          
+          glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
+          
+          for(int i = run->start; i <= run->end; ++i) {
+            int offset = i * 48 + 12;
+            
+            glBufferSubData(GL_ARRAY_BUFFER, offset, sizeof(GLfloat), &value);
+            glBufferSubData(GL_ARRAY_BUFFER, offset + 16, sizeof(GLfloat), &value);
+            glBufferSubData(GL_ARRAY_BUFFER, offset + 32, sizeof(GLfloat), &value);
+          }
+        }
+        
+        run = run->next;
+      }
+      
+      val = 0;
+      int start = tri.size();
+      grid->updateDeletedVoxelNeighbors(x, y, z, tri, 0);
+      
+      int total = tri.size() - start;
+      GLfloat* color_data = new GLfloat[total * 16];
+      GLfloat* vertex_data = new GLfloat[total * 12];
+      
+      //std::cout << "Total: " << total << std::endl;
+      
+      GLfloat* ptr = vertex_data;
+      
+      for(int i = 0; i < total; ++i) {
+        color_data[i * 16 + 0] = (rand() % 10000) / 10000.0;
+        color_data[i * 16 + 1] = (rand() % 10000) / 10000.0;
+        color_data[i * 16 + 2] = (rand() % 10000) / 10000.0;
+        color_data[i * 16 + 3] = 1.0f;
+        color_data[i * 16 + 4] = (rand() % 10000) / 10000.0;
+        color_data[i * 16 + 5] = (rand() % 10000) / 10000.0;
+        color_data[i * 16 + 6] = (rand() % 10000) / 10000.0;
+        color_data[i * 16 + 7] = 1.0f;
+        color_data[i * 16 + 8] = (rand() % 10000) / 10000.0;
+        color_data[i * 16 + 9] = (rand() % 10000) / 10000.0;
+        color_data[i * 16 + 10] = (rand() % 10000) / 10000.0;
+        color_data[i * 16 + 11] = 1.0f;
+        color_data[i * 16 + 12] = (rand() % 10000) / 10000.0;
+        color_data[i * 16 + 13] = (rand() % 10000) / 10000.0;
+        color_data[i * 16 + 14] = (rand() % 10000) / 10000.0;
+        color_data[i * 16 + 15] = 1.0f;
+        
+        
+        ptr[0] = tri[i + start].v[0].x;
+        ptr[1] = tri[i + start].v[0].y;
+        ptr[2] = tri[i + start].v[0].z;
+        
+        ptr[3] = tri[i + start].v[1].x;
+        ptr[4] = tri[i + start].v[1].y;
+        ptr[5] = tri[i + start].v[1].z;
+        
+        ptr[6] = tri[i + start].v[2].x;
+        ptr[7] = tri[i + start].v[2].y;
+        ptr[8] = tri[i + start].v[2].z;
+        
+        ptr += 9;
+      }
+      
+      glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
+      glBufferSubData(GL_ARRAY_BUFFER, start * 48, sizeof(GLfloat) * 16 * total, color_data);
+      
+      glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
+      glBufferSubData(GL_ARRAY_BUFFER, start * 36, sizeof(GLfloat) * 12 * total, vertex_data);
+      
+    }
   }
-  
+    
   //int addTriangle(
   
   
   
-  void setTriangles(std::vector<Triangle> t) {
+  void setTriangles(std::vector<Triangle>& t) {
     tri = t;
     printf("Create model (%d triangles)\n", tri.size());
     
@@ -244,10 +325,12 @@ public:
     };
 #endif
     
-    GLfloat vertex_buffer_data[tri.size() * 9];
+    const int EXTRA = 10;
+    
+    GLfloat* vertex_buffer_data = new GLfloat[tri.size() * 9 * EXTRA];
     GLfloat* ptr = &vertex_buffer_data[0];
     
-    GLfloat color_data[tri.size() * 12];
+    GLfloat* color_data = new GLfloat[tri.size() * 12 * EXTRA];
     
     for(int i = 0; i < tri.size(); ++i) {
       ptr[0] = tri[i].v[0].x;
@@ -275,7 +358,7 @@ public:
       }
       else {
         if(count == 1)
-          color_data[i] = 0;
+          color_data[i] = 1;
         else
           color_data[i] = 1;
       }
@@ -287,11 +370,14 @@ public:
     // The following commands will talk about our 'vertexbuffer' buffer
     glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
     // Give our vertices to OpenGL.
-    glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * 9 * tri.size(), vertex_buffer_data, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * 9 * tri.size() * EXTRA, vertex_buffer_data, GL_STATIC_DRAW);
     
     glGenBuffers(1, &colorBuffer);
     glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * 12 * tri.size(), color_data, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * 12 * tri.size() * EXTRA, color_data, GL_STATIC_DRAW);
+    
+    delete [] color_data;
+    delete [] vertex_buffer_data;
   }
   
   // Renders the model using the current transformation settings
@@ -964,7 +1050,7 @@ int main(int argc, char *argv[]) {
   Actor actor;
   actor.model = new Model;
   
-  actor.model->createGrid(32, 32, 32, 1, 1, 1, 1);
+  actor.model->createGrid(64, 64, 64, 1, 1, 1, 1);
   Grid3D<int>* g = actor.model->grid;
 
   //g->generate(Grid3D_Helper<int>::generateCircle);
@@ -979,7 +1065,7 @@ int main(int argc, char *argv[]) {
   Actor actor2;
   actor2.model = new Model;
   
-  actor2.model->createGrid(8, 8, 8, 1, 1, 1, 1);
+  actor2.model->createGrid(16, 16, 16, 1, 1, 1, 1);
   Grid3D<int>* g2 = actor2.model->grid;
   
   g2->generate(Grid3D_Helper<int>::generateCircle);
@@ -995,31 +1081,46 @@ int main(int argc, char *argv[]) {
   while(!engine.quit) {
     /* Process incoming events. */
     
-    if(engine.keyDown(SDLK_RETURN)) {
-      std::cout << "Intersect: " << actor2.model->bound_root.countVoxelIntersect(&actor.model->bound_root, 
-        actor2.pos, actor.pos
-        
-      ) << std::endl;
+    if(engine.keyDown(SDLK_LCTRL)) {
+      std::vector<Vex3D> inter;
       
-      SDL_Delay(1000);
+      
+      actor.model->bound_root.countVoxelIntersect(&actor2.model->bound_root, actor.pos, actor2.pos, inter);
+      
+      for(int i = 0; i < inter.size(); ++i) {
+        actor.model->deleteVoxel(inter[i].x, inter[i].y, inter[i].z);
+      }
     }
     
     if(engine.keyDown(SDLK_RIGHT)) {
       actor2.pos.x += .1;
       actor2.updatePos();
+      
     }
     if(engine.keyDown(SDLK_LEFT)) {
       actor2.pos.x -= .1;
       actor2.updatePos();
     }
     if(engine.keyDown(SDLK_UP)) {
-      actor2.pos.z += .1;
-      actor2.updatePos();
+      if(!engine.keyDown(SDLK_LSHIFT)) {
+        actor2.pos.z += .1;
+        actor2.updatePos();
+      }
+      else {
+        actor2.pos.y -= .1;
+        actor2.updatePos();
+      }
     }
     
     if(engine.keyDown(SDLK_DOWN)) {
-      actor2.pos.z -= .1;
-      actor2.updatePos();
+      if(!engine.keyDown(SDLK_LSHIFT)) {
+        actor2.pos.z -= .1;
+        actor2.updatePos();
+      }
+      else {
+        actor2.pos.y += .1;
+        actor2.updatePos();
+      }
     }
     
     engine.deltaTime = 1.0 / 60.0;
